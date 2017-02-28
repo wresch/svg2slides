@@ -1,0 +1,131 @@
+#! /bin/bash
+# vim: set ft=sh:
+
+function usage {
+	cat <<EOF
+NAME
+	svg2slides - export inkscape svg layers to individual files
+SYNOPSIS
+	svg2slides [-f <format>] <inkscape.svg>
+DESCRIPTION
+	Exports all layers of an inkscape.svg that contain labels
+    in the format 'slide[0-9]+' to individual files in <format>.
+    <format> can be png or pdf. If it's pdf the individual slides
+    are also concatenated in the order in which they appear in
+    the inkscape file (depends on pdfunite)
+DEPENDENCIES
+	Depends:  (1) inkscape (2) xlsproc
+	Optional: (1) pdfunite
+EOF
+}
+
+function die {
+	echo "$@" >&2
+	exit 1
+}
+
+type -P xsltproc &> /dev/null || die "Could not find xsltproc in path"
+type -P inkscape &> /dev/null || die "Could not find inkscape in path"
+
+format="pdf"
+while getopts ":f:" opt; do
+	case $opt in
+		f)
+			case $OPTARG in
+				pdf) format="pdf";;
+				png) format="png";;
+				*) usage; exit 1;;
+			esac
+			;;
+		\?)
+			echo "Invalid option: -$OPTARG"
+			usage
+			exit 1
+			;;
+		:)
+			echo "-$OPTARG requires an argument"
+			usage
+			exit 1
+			;;
+	esac
+done
+shift $((OPTIND-1))
+
+svg_file=${1:-none}
+if [[ "${svg_file}" == "none" ]]; then
+	usage
+    exit
+fi
+
+prefix=$(basename $(dirname $(realpath -Lm "${svg_file}")))
+
+#
+# transform the svg file to make sure all layers are visible
+#
+tmpfile="${svg_file%.svg}.tmp.svg"
+sed '1,/^__BEGIN_XSLT_VISIBLE/d; /^__END/,$d' ${BASH_SOURCE[0]} \
+    | xsltproc - "${svg_file}" \
+    > "${tmpfile}"
+trap "rm -f '${tmpfile}'" EXIT
+
+#
+# get the id and name of the layers called 'slide[0-9]+'
+#
+files=()
+while read lid llab; do
+    if [[ "$llab" =~ slide[0-9]+ ]]; then
+        printf "processing %s(%s)\n" $llab $lid
+        fn="${prefix}_${llab#slide}.${format}"
+        files+=( "${fn}" )
+        rm -f "${fn}"
+        inkscape --export-background=white --export-area-page --export-id $lid \
+            --export-id-only --export-${format}="${fn}" "${tmpfile}"
+    fi
+done < <( sed '1,/^__BEGIN_XSLT_LAYERS/d; /^__END/,$d' ${BASH_SOURCE[0]} | xsltproc - "${tmpfile}" )
+
+if [[ "$format" == "pdf" ]]; then
+	if type -P inkscape &> /dev/null; then
+		pdfunite "${files[@]}" "${prefix}.pdf"
+	fi
+fi
+
+exit 0
+
+__BEGIN_XSLT_VISIBLE__
+<xsl:stylesheet version="1.0"
+    xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+    xmlns:svg="http://www.w3.org/2000/svg"
+    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" >
+    <xsl:output omit-xml-declaration="yes" indent="yes"/>
+    <xsl:strip-space elements="*"/>
+
+    <xsl:template match="node()|@*">
+        <xsl:copy>
+            <xsl:apply-templates select="node()|@*"/>
+        </xsl:copy>
+    </xsl:template>
+
+    <xsl:template match="@style[parent::svg:g]">
+        <xsl:attribute name="style">
+          <xsl:value-of select="'display:inline'"/>
+        </xsl:attribute>
+    </xsl:template>
+</xsl:stylesheet>
+__END__
+
+
+__BEGIN_XSLT_LAYERS__
+<?xml version="1.0"?>
+<xsl:stylesheet version="1.0" 
+    xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+    xmlns:svg="http://www.w3.org/2000/svg"
+    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" >
+    <xsl:output method="text" omit-xml-declaration="yes" indent="no"/>
+    <xsl:template match="/">
+        <xsl:for-each select="/svg:svg/svg:g[@inkscape:groupmode='layer']">
+            <xsl:value-of select="@id"/><xsl:text>   </xsl:text><xsl:value-of select="@inkscape:label"/>
+            <xsl:text>&#xa;</xsl:text>
+        </xsl:for-each>
+    </xsl:template>
+</xsl:stylesheet> 
+__END__
