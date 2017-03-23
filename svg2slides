@@ -2,26 +2,26 @@
 # vim: set ft=sh:
 
 function usage {
-	cat <<EOF
+    cat <<EOF
 NAME
-	svg2slides - export inkscape svg layers to individual files
+    svg2slides - export inkscape svg layers to individual files
 SYNOPSIS
-	svg2slides [-f <format>] <inkscape.svg>
+    svg2slides [-f <format>] <inkscape.svg>
 DESCRIPTION
-	Exports all layers of an inkscape.svg that contain labels
+    Exports all layers of an inkscape.svg that contain labels
     in the format 'slide[0-9]+' to individual files in <format>.
     <format> can be png or pdf. If it's pdf the individual slides
     are also concatenated in the order in which they appear in
     the inkscape file (depends on pdfunite)
 DEPENDENCIES
-	Depends:  (1) inkscape (2) xlsproc
-	Optional: (1) pdfunite
+    Depends:  (1) inkscape (2) xlsproc
+    Optional: (1) pdfunite
 EOF
 }
 
 function die {
-	echo "$@" >&2
-	exit 1
+    echo "$@" >&2
+    exit 1
 }
 
 type -P xsltproc &> /dev/null || die "Could not find xsltproc in path"
@@ -29,31 +29,31 @@ type -P inkscape &> /dev/null || die "Could not find inkscape in path"
 
 format="pdf"
 while getopts ":f:" opt; do
-	case $opt in
-		f)
-			case $OPTARG in
-				pdf) format="pdf";;
-				png) format="png";;
-				*) usage; exit 1;;
-			esac
-			;;
-		\?)
-			echo "Invalid option: -$OPTARG"
-			usage
-			exit 1
-			;;
-		:)
-			echo "-$OPTARG requires an argument"
-			usage
-			exit 1
-			;;
-	esac
+    case $opt in
+        f)
+            case $OPTARG in
+                pdf) format="pdf";;
+                png) format="png";;
+                *) usage; exit 1;;
+            esac
+            ;;
+        \?)
+            echo "Invalid option: -$OPTARG"
+            usage
+            exit 1
+            ;;
+        :)
+            echo "-$OPTARG requires an argument"
+            usage
+            exit 1
+            ;;
+    esac
 done
 shift $((OPTIND-1))
 
 svg_file=${1:-none}
 if [[ "${svg_file}" == "none" ]]; then
-	usage
+    usage
     exit
 fi
 
@@ -84,9 +84,9 @@ while read lid llab; do
 done < <( sed '1,/^__BEGIN_XSLT_LAYERS/d; /^__END/,$d' ${BASH_SOURCE[0]} | xsltproc - "${tmpfile}" )
 
 if [[ "$format" == "pdf" ]]; then
-	if type -P inkscape &> /dev/null; then
-		pdfunite "${files[@]}" "${prefix}.pdf"
-	fi
+    if type -P pdfunite &> /dev/null; then
+        pdfunite "${files[@]}" "${prefix}.pdf"
+    fi
 fi
 
 exit 0
